@@ -7,6 +7,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import textwrap
 import unittest
 from subprocess import PIPE, STDOUT
@@ -1150,44 +1151,57 @@ class StandaloneIntegrationTests(ProcessIntegrationTest):
             self.assertEqual(0, proc.returncode)
 
     def test_html_report_option(self):
+        html_template = "some_name_{u}_{r}_{t}.html"
+        expected_filename = "some_name_11_5_2.html"
+
         with mock_locustfile() as mocked:
-            with temporary_file("", suffix=".html") as html_report_file_path:
-                try:
-                    subprocess.check_output(
-                        [
-                            "locust",
-                            "-f",
-                            mocked.file_path,
-                            "--host",
-                            "https://test.com/",
-                            "--run-time",
-                            "2s",
-                            "--headless",
-                            "--exit-code-on-error",
-                            "0",
-                            "--html",
-                            html_report_file_path,
-                        ],
-                        stderr=subprocess.STDOUT,
-                        timeout=10,
-                        text=True,
-                    ).strip()
-                except subprocess.CalledProcessError as e:
-                    raise AssertionError(f"Running locust command failed. Output was:\n\n{e.stdout}") from e
 
-                with open(html_report_file_path, encoding="utf-8") as f:
-                    html_report_content = f.read()
+            # Get system temp directory
+            temp_dir = tempfile.gettempdir()
 
-        # make sure title appears in the report
-        _, locustfile = os.path.split(mocked.file_path)
-        self.assertIn(locustfile, html_report_content)
+            # Define the input filename as well as the resulting filename within the temp directory
+            html_report_file_path = os.path.join(temp_dir, html_template)
+            output_html_report_file_path = os.path.join(temp_dir, expected_filename)
 
-        # make sure host appears in the report
-        self.assertIn("https://test.com/", html_report_content)
-        self.assertIn('"show_download_link": false', html_report_content)
-        self.assertRegex(html_report_content, r'"start_time": "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"')
-        self.assertRegex(html_report_content, r'"end_time": "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"')
-        self.assertRegex(html_report_content, r'"duration": "\d* seconds?"')
+            try:
+                output = subprocess.check_output(
+                    [
+                        "locust",
+                        "-f",
+                        mocked.file_path,
+                        "--host",
+                        "https://test.com/",
+                        "--run-time",
+                        "2s",
+                        "--headless",
+                        "--exit-code-on-error",
+                        "0",
+                        "-u", "11",
+                        "-r", "5",
+                        "--html", html_report_file_path,
+                    ],
+                    stderr=subprocess.STDOUT,
+                    timeout=10,
+                    text=True,
+                ).strip()
+
+            except subprocess.CalledProcessError as e:
+                raise AssertionError(f"Running locust command failed. Output was:\n\n{e.stdout}") from e
+            with open(output_html_report_file_path, encoding="utf-8") as f:
+                html_report_content = f.read()
+
+            # make sure correct name is generated based on filename arguments
+            self.assertIn(expected_filename, output)
+
+            _, locustfile = os.path.split(mocked.file_path)
+            self.assertIn(locustfile, html_report_content)
+
+            # make sure host appears in the report
+            self.assertIn("https://test.com/", html_report_content)
+            self.assertIn('"show_download_link": false', html_report_content)
+            self.assertRegex(html_report_content, r'"start_time": "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"')
+            self.assertRegex(html_report_content, r'"end_time": "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"')
+            self.assertRegex(html_report_content, r'"duration": "\d* seconds?"')
 
     def test_run_with_userclass_picker(self):
         with temporary_file(content=MOCK_LOCUSTFILE_CONTENT_A) as file1:
